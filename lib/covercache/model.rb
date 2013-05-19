@@ -23,14 +23,18 @@ module Covercache
       def generate_model_digest!
         self.covercache_model_digest = self.generate_model_digest
       end
+      
+      def covercache_flush!
+        self.covercache_keys.each do |key|
+          Rails.cache.delete(key) # if Rails.cache.exist?(key)
+        end.clear
+        self.covercache_keys.empty?
+      end
     end
     
     # flush cache on after_commit callback
-    def covercache_flush_cache
-      self.class.covercache_keys.each do |key|
-        Rails.cache.delete key if Rails.cache.exists?(key)
-      end
-      self.class.covercache_keys = []
+    def covercache_flush_cache!
+      self.class.send :covercache_flush!
     end
   end
 end

@@ -35,7 +35,6 @@ module Where
   private
     def joins_path(of)
       Rails.root.join(of).to_s
-      path_expand
     rescue NameError
       return false
     end    
