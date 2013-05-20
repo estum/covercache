@@ -72,6 +72,10 @@ end
 class Comment < ActiveRecord::Base
   belongs_to :post
   covers_with_cache
+  define_cached :post, debug: true
+  class_define_cached :for_post, debug: true do |post_id|
+    where(post_id: post_id).all
+  end
 end
 
 post1 = Post.create(:text => "First post!")

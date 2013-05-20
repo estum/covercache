@@ -17,6 +17,14 @@ describe "covercache" do
     pp Post.covercache_model_digest
     Post.covercache_model_digest.should be_an(String)
   end
+  it "should respounds to instance method defined by define_cached" do
+    comment = Comment.last
+    comment.cached_post.should == comment.post
+  end
+  it "should respounds to class method defined by define_cached" do
+    comments = Comment.cached_for_post(1)
+    Post.find(1).comments.should == comments
+  end
   it 'should return the same digest for class and instance' do
     post1 = Post.find(1)
     pp post1.covercache_model_digest
