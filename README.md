@@ -75,7 +75,7 @@ To wrap instance methods you should use a name of already defined method or set 
 	  # [keys], debug: true, expires_in: 10.minutes
 	  define_cached :all_comments, expires_in: 1.minute
 	  
-	  define_cached :all_comments_authors, debug: true, do |record|
+	  define_cached :all_comments_authors, debug: true do |record|
 	    record.author
 	  end
 	  # ...
@@ -86,9 +86,7 @@ To wrap instance methods you should use a name of already defined method or set 
 
 To wrap class methods you can also use blocks:
   
-    class_define_cached :for_post_ids, 
-    					debug:      true, 
-    					expires_in: 10.minutes do |post_ids|
+    class_define_cached :for_post_ids, debug: true, expires_in: 10.minutes do |post_ids|
       where(post_id: post_ids).all
     end
   
