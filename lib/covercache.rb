@@ -4,8 +4,6 @@ require 'active_support/core_ext'
 require 'active_support/concern' 
 require 'active_record'
 
-require "where"
-
 # == Motivation
 # 
 # * Quickly use <tt>Rails.cache</tt> for some tasks without rubbish code in models.
@@ -22,7 +20,7 @@ require "where"
 # Note, that Relation objects couldn't be cached, so wrapped method or block 
 # should return an array or single instance of your model. 
 # 
-# To wrap instance methods you should use a name of already defined method:
+# To wrap instance methods you should use a name of already defined method or set block with the first argument as record:
 #   
 #   class Post < ActiveRecord::Base
 #     def all_comments
@@ -35,13 +33,16 @@ require "where"
 #     # You can add arguments like for covercache: [keys], debug: true, expires_in: 10.minutes
 #     define_cached :all_comments, expires_in: 1.minute
 # 
+#     define_cached :all_comments_authors, expires_in: 1.minute do |record|
+#       record.author
+#     end
 #     # ...
 #   end
 #   
 #   post = Post.find(1)
 #   post.cached_all_comments
 # 
-# To wrap class methods you can also use use a block:
+# To wrap class methods:
 #   
 #   class_define_cached :for_post_ids, debug: true, expires_in: 10.minutes do |post_ids|
 #     where(post_id: post_ids).all
@@ -52,84 +53,118 @@ require "where"
 # 
 module Covercache
   # General helper method (ex <tt>cache</tt> helper  in PackRat)
-  module Base
-    private # ?    
-    def covercache(*args, &block) 
-      options = args.extract_options!
-      key     = []
-      should_debug = options[:debug].present? and options[:debug]
-
-      klass = covercaching_class_method? ? self : self.class
-
-      # Remove helper related options so we can pass to Rails.cache
-      filtered_options = options.except(:debug, :overwrite_key)     
+  module Base    
+    # Arguments:
+    #     
+    #      [1..]              any count of custom *keys
+    #      :debug             #=>
+    #      :without_auto_key  #=> don't generate cache_key
+    #       any option for Rails.cache.fetch
+    # 
+    # Example:
+    #     
+    #     scope :published, -> { where published: true }
+    #     has_many :comments
+    #           
+    #     def cached_comments
+    #       covercache do
+    #         comments.all
+    #       end
+    #     end
+    #           
+    #     def self.cached_published
+    #       covercache debug:true do
+    #         published.all
+    #       end
+    #     end
+    # 
+    private
+    def covercache(*keys, &block)
+      klass      = class_or_instance_class
+      options    = keys.extract_options!
+      cover_opts = options.extract! :debug, :without_auto_key
       
-      # if overwrite_key was set, we skip creating our own key
-      unless options[:overwrite_key] 
-        model_digest   = covercaching_get_model_digest
-        # Hack to get the method that called cache
-        calling_method = caller[0][/`([^']*)'/, 1] 
-
-        key << klass.name
-        key << [model_digest, calling_method].compact.join('/')
-        key << cache_key if self.respond_to?(:cache_key)
-        key += args
-      end
-      # Output the generated cache key to the console if debug is set
-      puts key.inspect if should_debug                              
-      # Make the actual Rails.cache call
-      Rails.cache.fetch key, filtered_options do
-        klass.covercache_keys << key unless key.in?(klass.covercache_keys)
+      # if :no_auto_cache_keys was set, we skip creating our own key
+      keys.prepend get_auto_cache_key(klass.name, caller) unless cover_opts[:without_auto_key]
+      keys.flatten!
+      puts keys.inspect if !!cover_opts[:debug]
+      # puts caller.inspect if !!cover_opts[:debug],
+            
+      Rails.cache.fetch keys, options do
+        klass.covercache_keys |= [ keys ]
         block.call
       end
     end
-
-    def covercaching_get_model_digest
-      self.covercache_model_digest.presence
+    
+    def get_auto_cache_key(class_name, _caller)
+      caller_method = _caller.map {|c| c[/`([^']*)'/, 1] }.detect {|m| !m.start_with?('block') }
+      puts caller_method.inspect
+      [ class_name, covercache_model_digest, caller_method, (cache_key if self.respond_to?(:cache_key?)) ].compact
     end
     
-    def covercaching_class_method?
-      self.is_a? Class
+    def class_or_instance_class
+      self.is_a?(Class) ? self : self.class
+    end
+    
+    def extract_cache_key_from(*args)
+      Array.wrap((args.last.delete(:cache_key) if args.last.is_a?(Hash)))
     end
   end
   
   # == Defining Helper
   # 
-  # TODO: share logic
-  # 
   module DefiningHelper
     # Define and wrap methods or blocks
-    def define_cached(*args)
-      method_name = args.shift              
-      opts = args.extract_options!
-      # method definition
-      define_method :"cached_#{method_name}" do |*method_args|      
-        if method_args.last.is_a?(Hash) and method_args.last.has_key?(:cache_key)
-          add_to_args = method_args.last.delete(:cache_key)
-          args += [add_to_args].flatten if add_to_args.present?
-        end
-        covercache(*args,opts){ self.send method_name, *method_args }
-      end
+    def define_cached(method, *args, &block)
+      options = args.extract_options!
+      is_class_method = !!options.delete(:is_class_method)
+
+      file, line = caller[is_class_method ? 1 : 0].split ':', 2
+      line = line.to_i
+      
+      covercache_method_arguments method, args, options, &block
+      covercache_define_wrapper method, file, line, block_given?, is_class_method
+    end
+  
+    def class_define_cached(method, *args, &block)
+      options = args.extract_options!
+      options[:is_class_method] = true
+      self.send :define_cached, method, *args, options, &block
     end
     
-    # TODO: not good
-    def class_define_cached(*args)
-      (class << self; self; end).instance_eval do
-        method_name = args.shift              
-        opts = args.extract_options!
-        # method definition
-        define_method :"cached_#{method_name}" do |*method_args|        
-          if method_args.last.is_a?(Hash) and method_args.last.has_key?(:cache_key)
-            add_to_args = method_args.last.delete :cache_key
-            args += [add_to_args].flatten if add_to_args.present?
-          end
-          covercache(*args, opts) do 
-            block_given? ? yield(*method_args) : self.send(method_name, *method_args)
+    private
+    def covercache_define_wrapper(method, file, line, with_block=false, is_class_method=false)
+      cached_method = "cached_#{method}"
+      
+      class_eval(<<-EOS, file, line - 2)
+        def #{'self.' if is_class_method}#{cached_method}(*args, &block)
+          settings = Array.wrap(#{cached_method}_settings[:args]) + extract_cache_key_from(*args)
+          covercache(*settings, #{cached_method}_settings[:opts]) do
+            if #{with_block}
+              #{cached_method}_settings[:block].call(#{'self,' unless is_class_method}*args)
+            else
+              self.__send__ :#{method}, *args, &block
+            end
           end
         end
-      end
+      EOS
+    end
+    
+    def covercache_method_arguments(method, *args, &block)
+      settings = collect_method_args_to_hash(*args, &block)
+      puts settings.inspect
+      class_attribute :"cached_#{method}_settings"
+      self.send(:"cached_#{method}_settings=", settings)
+    end
+    
+    def collect_method_args_to_hash(*args, &block)
+      puts args.inspect
+      Hash[ %w{args opts block}.map do |x| 
+        [ x, (args.shift || block) ] 
+      end].to_options
     end
   end
+  
   
   # Extend and Include to model Base helper so cache method is available in all contexts. 
   # <em>(yes, it is form PackRat too)</em>
@@ -143,7 +178,7 @@ module Covercache
       end
               
       self.covercache_keys ||= []
-      self.covercache_model_source = Where.is_class self, of: 'app/models'
+      self.covercache_model_source ||= @covercache_caller_source #Where.is_class self, of: 'app/models'
 
       generate_model_digest!
       
@@ -165,14 +200,12 @@ module Covercache
     
       # Generates and sets file_digest attribute
       def generate_model_digest!
-        self.covercache_model_digest = self.generate_model_digest
+        self.covercache_model_digest = generate_model_digest
       end
       
       def covercache_flush!
-        self.covercache_keys.each do |key|
-          Rails.cache.delete(key) # if Rails.cache.exist?(key)
-        end.clear
-        self.covercache_keys.empty?
+        self.covercache_keys.each { |key| Rails.cache.delete(key) }.clear # if Rails.cache.exist?(key)
+        covercache_keys.empty?
       end
     end
     
@@ -185,7 +218,10 @@ module Covercache
   # module CoversWithCache
   # add Covercache supporting to model
   def covers_with_cache
+    caller_source = caller.first[/[^:]+/]
+    
     class_eval do
+      @covercache_caller_source = caller_source
       include Covercache::ModelConcern
       extend  Covercache::DefiningHelper
     end

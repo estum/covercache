@@ -61,7 +61,7 @@ You can easily wrap methods with the <tt>define_cached</tt> helper.<br />
 Note, that Relation objects couldn't be cached, so wrapped method or block 
 should return an array or single instance of your model. 
 
-To wrap instance methods you should use a name of already defined method:
+To wrap instance methods you should use a name of already defined method or set block with the first argument as record:
   
     class Post < ActiveRecord::Base
 	  def all_comments
@@ -74,7 +74,10 @@ To wrap instance methods you should use a name of already defined method:
 	  # You can add arguments like for covercache: 
 	  # [keys], debug: true, expires_in: 10.minutes
 	  define_cached :all_comments, expires_in: 1.minute
-	
+	  
+	  define_cached :all_comments_authors, debug: true, do |record|
+	    record.author
+	  end
 	  # ...
 	end
 	  

@@ -62,17 +62,20 @@ end
 class Post < ActiveRecord::Base
   has_many :comments
   covers_with_cache
-  def cached_comments
-    covercache debug: true do
-      comments.all
-    end
-  end
+  define_cached :comments, debug: true
+  # def cached_comments
+  #   covercache debug: true do
+  #     comments.all
+  #   end
+  # end
 end
 
 class Comment < ActiveRecord::Base
   belongs_to :post
   covers_with_cache
-  define_cached :post, debug: true
+  define_cached :post, debug: true do |record|
+    record.post 
+  end
   class_define_cached :for_post, debug: true do |post_id|
     where(post_id: post_id).all
   end

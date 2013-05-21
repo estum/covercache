@@ -5,10 +5,6 @@ describe "covercache" do
   it 'should respond to covers_with_cache' do
     Post.should respond_to(:covers_with_cache)
   end
-  it 'should hove class keys storage' do
-    pp Post.covercache_keys
-    Post.covercache_keys.should be_an(Array)
-  end
   it 'should have covercache_model_source attribute' do
     pp Post.covercache_model_source
     Post.covercache_model_source.should be_an(String)
@@ -35,5 +31,13 @@ describe "covercache" do
     pp test.inspect
     pp test.cached_comments.inspect
     test.cached_comments.count.should == test.comments.count
+  end
+  it 'post should have class keys storage' do
+    pp Post.covercache_keys
+    Post.covercache_keys.should be_an(Array)
+  end
+  it 'comments should have class keys storage' do
+    pp Comment.covercache_keys
+    Comment.covercache_keys.should be_an(Array)
   end
 end
