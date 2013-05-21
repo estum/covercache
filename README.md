@@ -1,5 +1,7 @@
 # Covercache
 
+[![Code Climate](https://codeclimate.com/github/estum/covercache.png)](https://codeclimate.com/github/estum/covercache)
+
 Covercache is a helper for Rails.cache, based on [PackRat](https://github.com/cpuguy83/pack_rat) gem, and, as it says: <br />
 > When included in your class it makes caching trivial.
 
