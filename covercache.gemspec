@@ -10,7 +10,7 @@ Gem::Specification.new do |spec|
   spec.email         = ["anton.estum@gmail.com"]
   spec.description   = %q{Helper method to simplify Rails caching, based on PackRat}
   spec.summary       = %q{Rails cache helper based on PackRat gem}
-  spec.homepage      = "http://github.com/tonissimo/covercache"
+  spec.homepage      = "http://github.com/estum/covercache"
   spec.license       = "MIT"
 
   spec.files         = `git ls-files`.split($/)
