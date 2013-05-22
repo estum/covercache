@@ -182,7 +182,7 @@ module Covercache
 
       generate_model_digest!
       
-      after_commit :covercache_flush_cache
+      after_commit :covercache_flush_cache!
 
       extend  Base
       include Base
