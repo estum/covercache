@@ -106,14 +106,14 @@ module Covercache
       self.is_a?(Class) ? self : self.class
     end
     
-    def extract_cache_key_from(*args)
-      Array.wrap((args.last.delete(:cache_key) if args.last.is_a?(Hash)))
+    def extract_cache_key(*args)
+      [*(args.last.delete :cache_key if args.last.is_a?(Hash))]
     end
   end
   
   # == Defining Helper
   # 
-  module DefiningHelper
+  module DefiningHelper    
     # Define and wrap methods or blocks
     def define_cached(method, *args, &block)
       options = args.extract_options!
@@ -123,7 +123,7 @@ module Covercache
       line = line.to_i
       
       covercache_method_arguments method, args, options, &block
-      covercache_define_wrapper method, file, line, block_given?, is_class_method
+      covercache_define_wrapper method, file, line, is_class_method
     end
   
     def class_define_cached(method, *args, &block)
@@ -133,35 +133,31 @@ module Covercache
     end
     
     private
-    def covercache_define_wrapper(method, file, line, with_block=false, is_class_method=false)
-      cached_method = "cached_#{method}"
+    def covercache_define_wrapper(original_method, file, line, is_class_method = false)
+      method = "#{'self.' if is_class_method}cached_#{ original_method }"
       
-      class_eval(<<-EOS, file, line - 2)
-        def #{'self.' if is_class_method}#{cached_method}(*args, &block)
-          settings = Array.wrap(#{cached_method}_settings[:args]) + extract_cache_key_from(*args)
-          covercache(*settings, #{cached_method}_settings[:opts]) do
-            if #{with_block}
-              #{cached_method}_settings[:block].call(#{'self,' unless is_class_method}*args)
-            else
-              self.__send__ :#{method}, *args, &block
-            end
-          end
-        end
+      class_eval <<-EOS, file, line - 2
+        def #{method}(*args, &block)                                          # def cached_example(*args, &block)
+          options = Array(#{method}_data[:args]) + extract_cache_key(*args)   #   options = Array(cached_example_data[:args]) + extract_cache_key_from(*args)
+          covercache *options, #{method}_data[:opts] do                       #   covercache *options, cached_example_data[:opts] do
+            cache_block = #{method}_data[:block]                              #     cache_block = cached_example_data[:block]
+            if cache_block.present?                                           #     if cache_block.present?
+              cache_block.(#{'self,' unless is_class_method} *args)           #       cache_block.(self, *args)
+            else                                                              #     else
+              self.send :#{original_method}, *args, &block                    #       self.send :example, *args, &block
+            end                                                               #     end
+          end                                                                 #   end
+        end                                                                   # env
       EOS
     end
     
     def covercache_method_arguments(method, *args, &block)
-      settings = collect_method_args_to_hash(*args, &block)
-      puts settings.inspect
-      class_attribute :"cached_#{method}_settings"
-      self.send(:"cached_#{method}_settings=", settings)
+      class_attribute :"cached_#{method}_data"
+      self.send :"cached_#{method}_data=", organize_cached_method_data(*args, &block)
     end
     
-    def collect_method_args_to_hash(*args, &block)
-      puts args.inspect
-      Hash[ %w{args opts block}.map do |x| 
-        [ x, (args.shift || block) ] 
-      end].to_options
+    def organize_cached_method_data(*args, &block)
+      Hash[%w{args opts block}.map { |key| [key, (args.shift || block)] }].to_options
     end
   end
   
