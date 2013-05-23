@@ -86,12 +86,18 @@ module Covercache
       
       # if :no_auto_cache_keys was set, we skip creating our own key
       keys.prepend get_auto_cache_key(klass.name, caller) unless cover_opts[:without_auto_key]
+      
       keys.flatten!
-      puts keys.inspect if !!cover_opts[:debug]
+
+      if !!cover_opts[:debug]
+        puts keys.inspect
+        Rails.logger.info keys
+      end
       # puts caller.inspect if !!cover_opts[:debug],
-            
+      
       Rails.cache.fetch keys, options do
-        klass.covercache_keys |= [ keys ]
+        klass.covercache_keys |= [ keys.join('/') ]
+        puts klass.covercache_keys.inspect if !!cover_opts[:debug]
         block.call
       end
     end
@@ -129,7 +135,8 @@ module Covercache
     def class_define_cached(method, *args, &block)
       options = args.extract_options!
       options[:is_class_method] = true
-      self.send :define_cached, method, *args, options, &block
+      args << options
+      self.send :define_cached, method, *Array(args << options), &block
     end
     
     private
@@ -200,7 +207,10 @@ module Covercache
       end
       
       def covercache_flush!
-        self.covercache_keys.each { |key| Rails.cache.delete(key) }.clear # if Rails.cache.exist?(key)
+        self.covercache_keys.each do |key| 
+          Rails.cache.delete(key)
+        end # if Rails.cache.exist?(key)
+        self.covercache_keys.clear
         covercache_keys.empty?
       end
     end
