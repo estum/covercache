@@ -52,29 +52,6 @@ require 'active_record'
 #   Comments.cached_for_post_ids post_ids, cache_key: post_ids.hash
 # 
 module Covercache
-    
-  def self.logger
-    @logger ||=  rails_logger || default_logger
-  end
-
-  def self.rails_logger
-    (defined?(Rails) && Rails.respond_to?(:logger) && Rails.logger) ||
-    (defined?(RAILS_DEFAULT_LOGGER) && RAILS_DEFAULT_LOGGER.respond_to?(:debug) && RAILS_DEFAULT_LOGGER)
-  end
-
-  def self.default_logger
-    require 'logger'
-    l = Logger.new(STDOUT)
-    l.level = Logger::DEBUG
-    l
-  end
-
-  def self.logger=(logger)
-    @logger = logger
-  end
-  
-  
-  
   # General helper method (ex <tt>cache</tt> helper  in PackRat)
   module Base    
     # Arguments:
@@ -110,25 +87,25 @@ module Covercache
       # if :no_auto_cache_keys was set, we skip creating our own key
       keys.prepend get_auto_cache_key(klass.name, caller) unless cover_opts[:without_auto_key]
       
-      keys.flatten!.select!{|i| i.present? }
+      keys.flatten!
 
       if !!cover_opts[:debug]
-        Covercache.logger.debug keys.inspect
+        puts keys.inspect
+        Rails.logger.info keys
       end
       # puts caller.inspect if !!cover_opts[:debug],
       
       Rails.cache.fetch keys, options do
         klass.covercache_keys |= [ keys.join('/') ]
-        Covercache.logger.debug(klass.covercache_keys.inspect) if !!cover_opts[:debug]
+        puts klass.covercache_keys.inspect if !!cover_opts[:debug]
         block.call
       end
     end
     
     def get_auto_cache_key(class_name, _caller)
       caller_method = _caller.map {|c| c[/`([^']*)'/, 1] }.detect {|m| !m.start_with?('block') }
-      keys = [class_name, covercache_model_digest, caller_method].compact
-      keys << cache_key if self.respond_to?(:cache_key)
-      keys
+      puts caller_method.inspect
+      [ class_name, covercache_model_digest, caller_method, (cache_key if self.respond_to?(:cache_key?)) ].compact
     end
     
     def class_or_instance_class
@@ -139,8 +116,6 @@ module Covercache
       [*(args.last.delete :cache_key if args.last.is_a?(Hash))]
     end
   end
-  
-  
   
   # == Defining Helper
   # 
@@ -170,7 +145,7 @@ module Covercache
       
       class_eval <<-EOS, file, line - 2
         def #{method}(*args, &block)                                          # def cached_example(*args, &block)
-          options = Array(#{method}_data[:args]) + extract_cache_key(*args)   #   options = Array(cached_example_data[:args]) + extract_cache_key(*args)
+          options = Array(#{method}_data[:args]) + extract_cache_key(*args)   #   options = Array(cached_example_data[:args]) + extract_cache_key_from(*args)
           covercache *options, #{method}_data[:opts] do                       #   covercache *options, cached_example_data[:opts] do
             cache_block = #{method}_data[:block]                              #     cache_block = cached_example_data[:block]
             if cache_block.present?                                           #     if cache_block.present?
@@ -179,7 +154,7 @@ module Covercache
               self.send :#{original_method}, *args, &block                    #       self.send :example, *args, &block
             end                                                               #     end
           end                                                                 #   end
-        end                                                                   # end
+        end                                                                   # env
       EOS
     end
     
@@ -246,20 +221,17 @@ module Covercache
     end
   end
   
-  
-  # == Injecting
-  # 
-  module Inject
-    def covers_with_cache
-      caller_source = caller.first[/[^:]+/]
+  # module CoversWithCache
+  # add Covercache supporting to model
+  def covers_with_cache
+    caller_source = caller.first[/[^:]+/]
     
-      class_eval do
-        @covercache_caller_source = caller_source
-        include Covercache::ModelConcern
-        extend  Covercache::DefiningHelper
-      end
+    class_eval do
+      @covercache_caller_source = caller_source
+      include Covercache::ModelConcern
+      extend  Covercache::DefiningHelper
     end
   end
 end
 
-ActiveRecord::Base.extend Covercache::Inject
+ActiveRecord::Base.extend Covercache #::CoversWithCache
