@@ -106,7 +106,7 @@ module Covercache
       keys.prepend get_auto_cache_key(caller) unless !!without_auto_key
       keys.flatten!.compact!
 
-      Covercache.logger.debug %([covercache] #{get_class_name} class generate cache key: #{keys.inspect}) if debug
+      Covercache.logger.debug %([covercache] #{get_class_name} class generate cache key: #{keys.inspect}) if !!debug
       
       Rails.cache.fetch keys, options do
         push_covercache_key keys.join('/')
@@ -226,12 +226,10 @@ module Covercache
       end
       
       def covercache_flush!
-        Covercache.logger.debug %([covercache] #{self.name} deletes caches with keys: #{self.covercache_keys.inspect})
         self.covercache_keys.each do |key| 
           Rails.cache.delete(key)
         end # if Rails.cache.exist?(key)
         self.covercache_keys.clear
-        Covercache.logger.debug %([covercache] #{self.name} after key deleting: #{self.covercache_keys.inspect})
         covercache_keys.empty?
       end
     end
