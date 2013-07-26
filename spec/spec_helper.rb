@@ -1,6 +1,6 @@
-require 'rubygems'
 require 'covercache'
 require 'bundler'
+
 begin
   Bundler.setup(:default, :development)
 rescue Bundler::BundlerError => e
@@ -8,6 +8,7 @@ rescue Bundler::BundlerError => e
   $stderr.puts "Run `bundle install` to install missing gems"
   exit e.status_code
 end
+
 require 'rspec'
 require 'rspec/autorun'
 
@@ -15,14 +16,9 @@ ActiveRecord::Base.establish_connection adapter: "sqlite3",
                                         database: File.expand_path("../covercache.sqlite3", __FILE__)
 
 class Rails
+  RAILS_CACHE = ActiveSupport::Cache::MemoryStore.new
   def self.cache
-    Rails::Cache
-  end
-end
-
-class Rails::Cache
-  def self.fetch(*options, &block)
-    block.call
+    RAILS_CACHE
   end
 end
 
