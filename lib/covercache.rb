@@ -101,12 +101,12 @@ module Covercache
     private
     def covercache(*keys, &block)
       options = keys.extract_options!
-      debug, without_auto_key = options.slice! :debug, :without_auto_key
+      props = options.slice! :debug, :without_auto_key
       
-      keys.prepend get_auto_cache_key(caller) unless !!without_auto_key
+      keys.prepend get_auto_cache_key(caller) unless props.fetch(:without_auto_key){false}
       keys.flatten!.compact!
 
-      Covercache.logger.debug %([covercache] #{get_class_name} class generate cache key: #{keys.inspect}) if !!debug
+      Covercache.logger.debug %([covercache] #{get_class_name} class generate cache key: #{keys.inspect}) if props.fetch(:debug){false}
       
       Rails.cache.fetch keys, options do
         push_covercache_key keys.join('/')
