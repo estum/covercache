@@ -100,8 +100,8 @@ module Covercache
     # 
     private
     def covercache(*keys, &block)
-      options = keys.extract_options!
-      props = options.slice! :debug, :without_auto_key
+      props = keys.extract_options!
+      options = props.slice! :debug, :without_auto_key
       
       keys.prepend get_auto_cache_key(caller) unless props.fetch(:without_auto_key){false}
       keys.flatten!.compact!
