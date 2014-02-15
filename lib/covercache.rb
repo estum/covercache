@@ -115,8 +115,7 @@ module Covercache
     end
     
     def push_covercache_key(key)
-      self.covercache_keys << key
-      self.covercache_keys.uniq!
+      self.covercache_keys = (covercache_keys << key).uniq
     end
     
     def get_auto_cache_key(_caller)
@@ -127,7 +126,7 @@ module Covercache
     end
     
     def get_class_name
-      self.instance_of?(Class) ? self.name : self.class.name
+      self.instance_of?(Class) ? name : self.class.name
     end
     
     def extract_cache_key(*args)
@@ -192,11 +191,7 @@ module Covercache
   module ModelConcern
     extend ActiveSupport::Concern
 
-    included do      
-      cattr_accessor :covercache_keys do 
-        []
-      end
-      
+    included do
       cattr_accessor :covercache_model_source do
         @covercache_caller_source
       end
@@ -204,7 +199,7 @@ module Covercache
       cattr_accessor :covercache_model_digest
       generate_model_digest!
       
-      after_commit :covercache_flush_cache!
+      after_commit :expire_covercache
 
       extend  Base
       include Base
@@ -212,9 +207,17 @@ module Covercache
     
     # Support class methods
     module ClassMethods
+      def covercache_keys
+        Rails.cache.fetch(cache_keys_key) {[]}
+      end
+      
+      def covercache_keys=(keys)
+        Rails.cache.write(cache_keys_key, keys)
+      end
+      
       def generate_model_digest
         return unless covercache_model_source.present?
-        file = File.read self.covercache_model_source
+        file = File.read covercache_model_source
         Digest::MD5.hexdigest(file)
       rescue
         nil
@@ -225,19 +228,36 @@ module Covercache
         self.covercache_model_digest = generate_model_digest
       end
       
-      def covercache_flush!
-        self.covercache_keys.each do |key| 
+      def expire_covercache
+        covercache_keys.each do |key| 
           Rails.cache.delete(key)
-        end # if Rails.cache.exist?(key)
-        self.covercache_keys.clear
+        end
+        self.covercache_keys = []
         covercache_keys.empty?
+      end
+      
+      alias_method :covercache_flush!, :expire_covercache
+      
+      private
+      def cache_keys_key
+        "covercache_keys/#{name}/#{covercache_model_digest}"
       end
     end
     
-    # flush cache on after_commit callback
-    def covercache_flush_cache!
-      self.class.send :covercache_flush!
+    def covercache_keys
+      self.class.send :covercache_keys
     end
+    
+    def covercache_keys=(keys)
+      self.class.send :covercache_keys=, keys
+    end
+    
+    # flush cache on after_commit callback
+    def expire_covercache
+      self.class.send :expire_covercache
+    end
+    
+    alias_method :covercache_flush_cache!, :expire_covercache
   end
   
   # module CoversWithCache
